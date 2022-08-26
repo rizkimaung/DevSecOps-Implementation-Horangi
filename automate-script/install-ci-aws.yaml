@@ -1,0 +1,39 @@
+- name: task for CI
+  hosts: host-ci
+  tasks:
+    - name: create directory
+      command: '{{item}}'
+      with_items:
+        - sudo mkdir -p /usr/share/keyrings
+        - sudo touch /usr/share/keyrings/jenkins-keyring.asc
+
+    - name: add key
+      apt_key:
+        url: https://pkg.jenkins.io/debian/jenkins.io.key
+        state: present
+        keyring: /usr/share/keyrings/jenkins-keyring.asc
+      become: true
+
+    - name: add-repo
+      copy:
+        dest: /etc/apt/sources.list.d/jenkins.list
+        content: |
+          deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] http://pkg.jenkins.io/debian-stable binary/
+      become: true
+
+    - name: install jenkins
+      command: '{{item}}'
+      with_items:
+        - sudo apt update -y
+        - sudo apt install jenkins -y
+
+    - name: install snyk
+      command: '{{item}}'
+      with_items:
+        - sudo npm install snyk@latest -g -y
+
+    - name: install trufflehog
+      command: '{{item}}'
+      with_items:
+        - sudo apt install python3-pip -y
+        - sudo pip install trufflehog

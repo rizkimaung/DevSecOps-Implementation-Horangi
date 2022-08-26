@@ -1,0 +1,152 @@
+- name: task for CD
+  hosts: host-cd
+
+  vars_files:
+    vars-db.yaml
+
+  tasks:
+    - name: add repo 
+      copy:
+        dest: /etc/apt/sources.list.d/pgdg.list
+        content: |
+          deb http://apt.postgresql.org/pub/repos/apt/ focal-pgdg main        
+      become: true
+
+    - name: add key
+      apt_key:
+        url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+        state: present
+      become: true
+
+    - name: install postgresql
+      command: '{{item}}'
+      with_items:
+        - sudo apt update -y
+        - sudo apt install -y postgresql postgresql-contrib
+        - sudo systemctl enable postgresql
+        - sudo systemctl start postgresql
+
+#    - name: change password
+#      user:
+#        name: postgres
+#        update_password: always
+#        password: "{{ newpassword|password_hash('sha512') }}"
+#      become: true
+
+    - name: "install setfacl"
+      command: '{{item}}'
+      with_items: 
+        - sudo apt install acl -y
+        - pip3 install psycopg2-binary
+
+    - name: "Create app database"
+      postgresql_db:
+        state: present
+        name: "{{ db_name }}"
+      become: true
+      become_user: postgres
+
+    - name: "Create db user"
+      postgresql_user:
+        state: present
+        name: "{{ db_user }}"
+        password: "{{ newpassword }}"
+      become: true
+      become_user: postgres
+
+    - name: "Grant db user access to app db"
+      postgresql_privs:
+        type: database
+        database: "{{ db_name }}"
+        roles: "{{ db_user }}"
+        grant_option: no
+        privs: all
+      become: true
+      become_user: postgres
+
+    - name: install zip
+      command: sudo apt install zip -y
+
+    - name: download sonarqube
+      get_url:
+        url: https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-9.3.0.51899.zip
+        dest: /root/sonarqube.zip
+      become: true
+
+    - name: unzip sonarqube
+      command: '{{item}}'
+      with_items:
+        - sudo unzip /root/sonarqube.zip -d /opt/
+
+    - name: configure sonarqube
+      command: '{{item}}'
+      with_items:
+        - sudo groupadd sonar
+        - sudo useradd -d /opt/sonarqube-9.3.0.51899 -g sonar sonar
+        - sudo chown sonar:sonar /opt/sonarqube-9.3.0.51899 -R
+
+    - name: Set user and password Sonar
+      blockinfile:
+        path: /opt/sonarqube-9.3.0.51899/conf/sonar.properties
+        backup: no
+        block: |
+          sonar.jdbc.username=sonar
+          sonar.jdbc.password={{ newpassword }}
+          sonar.jdbc.url=jdbc:postgresql://localhost:5432/sonarqube
+      become: true
+      become_user: sonar
+
+    - name: set user on sonar.sh
+      blockinfile:
+        path: /opt/sonarqube-9.3.0.51899/bin/linux-x86-64/sonar.sh
+        backup: no
+        block: |
+          RUN_AS_USER=sonar
+      become: true
+      become_user: sonar
+
+    - name: Creating a file with content
+      copy:
+        dest: "/etc/systemd/system/sonar.service"
+        content: |
+          [Unit]
+          Description=SonarQube service
+          After=syslog.target network.target
+
+          [Service]
+          Type=forking
+
+          ExecStart=/opt/sonarqube-9.3.0.51899/bin/linux-x86-64/sonar.sh start
+          ExecStop=/opt/sonarqube-9.3.0.51899/bin/linux-x86-64/sonar.sh stop
+
+          User=sonar
+          Group=sonar
+          Restart=always
+
+          LimitNOFILE=65536
+          LimitNPROC=4096
+
+          [Install]
+          WantedBy=multi-user.target
+      become: true
+
+    - name: start to sonarqube
+      command: '{{item}}'
+      with_items:
+        - sudo systemctl enable sonar
+        - sudo systemctl start sonar
+        - sudo systemctl status sonar
+
+    - name: sysctl edit
+      blockinfile:
+        path: /etc/sysctl.conf
+        backup: no
+        block: |
+          vm.max_map_count=262144
+          fs.file-max=65536
+          ulimit -n 65536
+          ulimit -u 4096
+      become: true
+
+    - name: reboot
+      command: sudo reboot

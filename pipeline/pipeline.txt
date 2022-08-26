@@ -1,0 +1,51 @@
+pipeline {
+    agent any
+    stages {
+        stage('Secret Scanning') {
+            steps {
+                sh '''
+                    trufflehog --regex --entropy=False $[REPOSITORY]> report-SS.txt
+                    '''
+            }
+        }
+        stage('github checkout') {
+            steps {
+                git '$[REPOSITORY]'
+            }
+        }
+        stage('Software Compositions Analysis') {
+            steps {
+                sh '''
+                snyk auth $[TOKEN]
+                snyk test .
+                '''
+            }
+        }
+        stage('Static Application Security Testing with snyk') {
+            steps {
+                sh '''
+                snyk auth $[TOKEN]
+                snyk code test .
+                snyk monitor .
+                '''
+            }
+        }
+        stage('Code Quality Check via SonarQube'){
+            environment {
+                SONARQUBE_LOGIN_TOKEN = credentials('SONARQUBE_LOGIN_TOKEN_CREDS')
+                SONAR_SCANNER = tool('Sonar test')
+            }
+            steps {
+                script {   
+	                 withSonarQubeEnv("sonarqube-test") {
+	                 sh "${SONAR_SCANNER}/bin/sonar-scanner -X \
+                    -Dsonar.projectKey=test \
+                    -Dsonar.sources=. \
+					-Dsonar.host.url=$[HOSTSONARQUBE] \
+					-Dsonar.login=${SONARQUBE_LOGIN_TOKEN}" 
+	                 }
+                }
+            }
+        }
+    }
+}

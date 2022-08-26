@@ -1,0 +1,105 @@
+- name: task for CD
+  hosts: devsecops_ci_server
+  tasks:
+    - name: add repo 
+      apt_repository:
+        repo: deb http://apt.postgresql.org/pub/repos/apt/ focal-pgdg main
+        state: present
+        filename: pgdg
+
+    - name: add key
+      apt_key:
+        url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+        state: present
+      become: true
+
+    - name: install postgresql
+      command: '{{item}}'
+      with_items:
+        - apt update -y
+        - apt install -y postgresql postgresql-contrib
+        - systemctl enable postgresql
+        - systemctl start postgresql
+
+    - name: change password
+      user:
+        name: postgres
+        update_password: always
+        password: "{{ newpassword|password_hash('sha512') }}"
+
+    - name: install zip
+      command: apt-get install zip -y
+
+    - name: download sonarqube
+      get_url:
+        url: https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-9.3.0.51899.zip
+        dest: /root/sonarqube9.3.0.51899.zip
+
+    - name: unzip sonarqube
+      command: '{{item}}'
+      with_items:
+        - unzip sonarqube*.zip
+        - 'mv  sonarqube-* /opt/sonarqube'
+
+    - name: configure sonarqube
+      command: '{{item}}'
+      with_items:
+        - groupadd sonar
+        - useradd -d /opt/sonarqube -g sonar sonar
+        - chown sonar:sonar /opt/sonarqube -R
+
+    - name: Set user and password Sonar
+      blockinfile:
+        path: /opt/sonarqube/conf/sonar.properties
+        backup: yes
+        block: |
+          sonar.jdbc.username=sonar
+          sonar.jdbc.password=12345678
+          sonar.jdbc.url=jdbc:postgresql://localhost:5432/sonarqube
+
+    - name: set user on sonar.sh
+      blockinfile:
+        path: /opt/sonarqube/bin/linux-x86-64/sonar.sh
+        backup: yes
+        block: |
+          RUN_AS_USER=sonar
+
+    - name: Creating a file with content
+      copy:
+        dest: "/etc/systemd/system/sonar.service"
+        content: |
+          [Unit]
+          Description=SonarQube service
+          After=syslog.target network.target
+
+          [Service]
+          Type=forking
+
+          ExecStart=/opt/sonarqube/bin/linux-x86-64/sonar.sh start
+          ExecStop=/opt/sonarqube/bin/linux-x86-64/sonar.sh stop
+
+          User=sonar
+          Group=sonar
+          Restart=always
+
+          LimitNOFILE=65536
+          LimitNPROC=4096
+
+          [Install]
+          WantedBy=multi-user.target
+    - name: start to sonarqube
+      command: '{{item}}'
+      with_items:
+        - systemctl enable sonar
+        - systemctl start sonar
+        - systemctl status sonar
+
+    - name: sysctl edit
+      blockinfile:
+        path: /etc/sysctl.conf
+        backup: yes
+        block: |
+          vm.max_map_count=262144
+          fs.file-max=65536
+          ulimit -n 65536
+          ulimit -u 4096

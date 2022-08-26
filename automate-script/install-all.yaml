@@ -1,0 +1,28 @@
+- name: task for all
+  hosts: all
+  tasks:
+    - name: install java
+      command: '{{item}}'
+      with_items:
+        - sudo apt update -y
+        - sudo apt install fontconfig openjdk-11-jre golang  -y
+        - sudo java --version
+
+    - name: get repo nodejs
+      get_url:
+        url: https://deb.nodesource.com/setup_17.x
+        dest: /home/ubuntu/install.sh
+
+    - name: install nodejs
+      command: '{{item}}'
+      with_items:
+        - sudo bash /home/ubuntu/install.sh
+        - sudo apt install nodejs -y
+        - sudo node -v
+        - sudo npm -v
+
+    - name: install pip
+      command: '{{item}}'
+      with_items:
+        - sudo apt install python3-pip -y
+

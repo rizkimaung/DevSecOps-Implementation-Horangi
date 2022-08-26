@@ -1,0 +1,6 @@
+[devsecops_ci_server]
+192.168.56.101  ansible_user=vagrant ansible_ssh_private_key_file=.vagrant/machines/devsecops_ci_server/virtualbox/private_key
+[devsecops_cd_server]
+192.168.56.102  ansible_user=vagrant ansible_ssh_private_key_file=.vagrant/machines/devsecops_cd_server/virtualbox/private_key
+[devsecops_apps]
+192.168.56.103  ansible_user=vagrant ansible_ssh_private_key_file=.vagrant/machines/devsecops_apps/virtualbox/private_key
